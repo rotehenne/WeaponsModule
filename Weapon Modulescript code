@@ -1,0 +1,464 @@
+-- Hello! Hope your having a good day! This is the weapon module that all the weapons use in my game "Civilization Game" link provided in application!
+-- | Services | --
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local playersService = game:GetService("Players")
+local teamsService = game:GetService("Teams")
+-- | Variables | --
+local bindableEventsFolder = replicatedStorage.BindableEventFolder
+local bindableEventsFolder = replicatedStorage.BindableEventFolder
+local joinTeamBindEvent =  bindableEventsFolder.JoinTeamBindEvent
+local naturalResourcesFolder = game.Workspace.NaturalResources
+local placedBuildingFolder = game.Workspace.PlacedBuildingsFolder
+local destroyNaturalResourcesBindEvent =  bindableEventsFolder.DestroyNaturalResource
+local ageReqsModule = require(replicatedStorage.ModuleScripts.AgeRequirementsModule)
+local notifyPlayerModule = require(replicatedStorage.ModuleScripts.NotifyPlayerModule)
+local playerDamageModule = require(replicatedStorage.ModuleScripts.PlayerDamageModule)
+local playerInfoModule = require(replicatedStorage.ModuleScripts.PlayerInfoModule)
+local clientCast = require(replicatedStorage.ModuleScripts.ClientCast)
+local criticalBuildingDestroyedBindEvent = bindableEventsFolder.CriticalBuildingDestroyed
+local combatLockToggle = replicatedStorage.RemoteEventFolder.CombatLockToggle
+local ToolsInWorkspaceFolder = game.Workspace:WaitForChild("ToolsInWorkspaceFolder")
+
+-- | Constants | --
+local WeaponsModule = {}
+
+WeaponsModule.__index = WeaponsModule
+
+function WeaponsModule.new(WeaponTool)
+	local self = setmetatable({},WeaponsModule)
+	self.Tool = WeaponTool
+	self.Handle = self.Tool.Handle
+	self.PickUpPrompt = self.Handle.PickUpTool
+	self.Caster = nil
+	self.InShiftLock = false
+	self.lastPlayerHolding = nil
+	self.showHitBoxForTesting = false
+	self.ToolPlaysSounds = true
+	self.currentToolAnimationTrack = nil
+	self.idleAnimTrack = nil
+	self.AnimationTable = {}
+	self.ActivationDebounce = false
+	self.ToolHitdebounce = false
+	self.HurtOutline = nil
+	self.HitModels = {}
+	return self
+end
+
+function WeaponsModule:SetUpTool()
+	self.Handle.Transparency = 1
+	self.PickUpPrompt.RequiresLineOfSight = false
+	self.PickUpPrompt.ObjectText = self.Tool.Name
+	self.Handle.CanTouch = false
+	--Set up Animtions
+	for i, item in ipairs(self.Tool:GetChildren()) do
+		if item:IsA("Animation") then
+			local animation = item
+			if animation.AnimationId ~= "" then
+				table.insert(self.AnimationTable, animation)
+			end
+		end
+	end
+--GetHurtOutline
+	if replicatedStorage:FindFirstChild("HurtHighlight") then
+		--Get one already made
+		self.HurtOutline = replicatedStorage:FindFirstChild("HurtHighlight")
+	else
+		--define new highlight
+		self.HurtOutline = Instance.new("Highlight", replicatedStorage)
+		self.HurtOutline.Name = "HurtHighlight"
+		self.HurtOutline.FillColor = Color3.new(255,0,0)
+		self.HurtOutline.FillTransparency = 0.8
+		self.HurtOutline.Parent = game:GetService("ReplicatedStorage")
+		self.HurtOutline.OutlineTransparency = 1
+	end
+end
+
+
+function WeaponsModule:OnHit(hitmodel)
+	local model = hitmodel
+	if model.Parent ~= nil then
+		if model:IsA("Model") and self.Tool:GetAttribute("DamageType") == "Creature"  then
+			if self.ToolHitdebounce == false and self.ActivationDebounce == true  and ageReqsModule.CheckIfCanAttack(self.Tool.Parent) then
+				self.ToolHitdebounce = true
+				if model:FindFirstChild("Humanoid")  then
+					local Humanoid = model:FindFirstChild("Humanoid")
+					local hurtOutlineClone = self.HurtOutline:Clone()
+					if playersService:GetPlayerFromCharacter(Humanoid.Parent) then
+						local player = playersService:GetPlayerFromCharacter(Humanoid.Parent)
+						local playerCharacter = player.Character
+						if playerCharacter:FindFirstChild("BlockingBoolean") then
+							if playerCharacter:FindFirstChild("BlockingBoolean").Value == true then
+								hurtOutlineClone = nil
+							end
+						end
+					end
+					local character = model
+					if playersService:GetPlayerFromCharacter(Humanoid.Parent) then--check if its a player
+						local attackingPlayer = playersService:GetPlayerFromCharacter(self.Tool.Parent)
+						local player = playersService:GetPlayerFromCharacter(Humanoid.Parent)
+						if playerDamageModule.CanHurtPlayer(attackingPlayer,player) then -- checks if on teams or not and if teamkill is on
+							playerDamageModule.CombatDamagePlayer(player, self.Tool:GetAttribute("ToolDamage"), attackingPlayer)
+						else    -- this is if they are sameteam and don't have teamkill on
+							hurtOutlineClone = nil
+							playerDamageModule.CombatDamagePlayer(player, self.Tool:GetAttribute("ToolDamage"), attackingPlayer)
+						end
+					else
+						Humanoid.Health -= self.Tool:GetAttribute("ToolDamage")
+					end
+					if hurtOutlineClone then
+						hurtOutlineClone.Parent = character
+					end
+					if self.Tool:GetAttribute("AttackHitSoundId") ~= "" then
+						if not self.Tool.Handle:FindFirstChild("AttackHitSound") then -- attack hit sound
+							local sound = Instance.new("Sound", self.Tool.Handle)
+							sound.Name = "AttackHitSound"
+							sound.SoundId = self.Tool:GetAttribute("AttackHitSoundId")
+						
+							sound.Volume = self.Tool:GetAttribute("AttackHitSoundVolume")
+							sound.RollOffMaxDistance = 100
+						end
+						if hurtOutlineClone then -- uhhh quicker way to say whether or not the opponent is blocking because we set hurt outline to nil when they are blocking so you won't here slicing when the opponents blocking it just wouldn't make sense
+							local AttackHitSound = self.Tool.Handle:FindFirstChild("AttackHitSound")
+							AttackHitSound:Play()
+						end
+					end
+					if hurtOutlineClone then
+						task.delay(.1,function()
+							hurtOutlineClone:Destroy()
+						end)
+					end
+					self.ToolHitdebounce = false
+				end
+			end
+		end
+	end
+end
+
+function WeaponsModule:ActivateCaster()
+	local playerCharacter = self.Tool.Parent
+	local player = playersService:GetPlayerFromCharacter(playerCharacter)
+	if self.Caster then
+		self.Caster:Start()
+		self.currentToolAnimationTrack.Ended:Wait()
+		if self.Caster then
+			self.Caster:Stop()
+		end
+		self.HitModels = {} -- Resets Hit Models after finished with swing
+	end
+end
+
+
+
+function WeaponsModule:PlaceOnHip()
+	if self.Tool.Parent.Name == "Backpack" then 
+		local backpack = self.Tool.Parent
+		local player = backpack.Parent
+		local character = player.Character
+		local rightLeg = character["Right Leg"]
+		local hipToolPart = rightLeg.HipToolPart
+		local toolClone = self.Tool:Clone()
+		local toolHipModel = Instance.new("Model")
+		toolHipModel.Parent = hipToolPart
+		toolHipModel.Name = self.Tool.Name .."ToolHipModel"-- classify by name so we only destroy Hipmodels of the same item type
+		--LOOP THROUGH WHATS IN TOOLCLONE AND PUTS IT INTO Hip MODEL
+		for i, child in ipairs(toolClone:GetChildren()) do
+			if child:IsA("Part")  or child:IsA("UnionOperation") or child:IsA("MeshPart") then
+				child.Parent = toolHipModel
+				child.CanCollide = false
+				child.Massless = true
+			end
+		end
+		-- set Primary Part OF Model To Tools Handle
+		toolHipModel.PrimaryPart = toolHipModel:FindFirstChild("Handle")
+		--Creates the Weld
+		local ToolHipWeld = Instance.new("Weld")
+		ToolHipWeld.Name = self.Tool.Name .."ToolHipWeld"-- classify by name so we only destroy Hipmodels of the same item type
+		ToolHipWeld.Parent = rightLeg.HipToolPart
+		-- set part 0 and part 1
+		ToolHipWeld.Part0 = rightLeg.HipToolPart
+		ToolHipWeld.Part1 = toolHipModel:FindFirstChild("Handle")
+		--Set CFRAME TO Hip tool part
+		wait(.5)
+	end
+end
+function WeaponsModule:PlaceOnBack()
+	if self.Tool.Parent.Name == "Backpack" then 
+		local backpack = self.Tool.Parent
+		local player = backpack.Parent
+		local character = player.Character
+		local torso = character.Torso
+		local backToolPart = torso.BackToolPart
+		local toolClone = self.Tool:Clone()
+		local toolBackModel = Instance.new("Model")
+		toolBackModel.Parent = backToolPart
+		toolBackModel.Name = self.Tool.Name .."ToolBackModel"-- classify by name so we only destroy backmodels of the same item type
+		for i, child in ipairs(toolClone:GetChildren()) do
+			if child:IsA("Part")  or child:IsA("UnionOperation") or child:IsA("MeshPart") then
+				child.Parent = toolBackModel
+				child.CanCollide = false
+				child.Massless = true
+			end
+		end
+		toolBackModel.PrimaryPart = toolBackModel:FindFirstChild("Handle")
+		--Creates the Weld
+		local ToolBackWeld = Instance.new("Weld")
+		ToolBackWeld.Name = self.Tool.Name .."ToolBackWeld"-- classify by name so we only destroy backmodels of the same item type
+		ToolBackWeld.Parent = torso.BackToolPart
+		-- set part 0 and part 1
+		ToolBackWeld.Part0 = torso.BackToolPart
+		ToolBackWeld.Part1 = toolBackModel:FindFirstChild("Handle")
+		--Set CFRAME TO back tool part
+		toolBackModel.PrimaryPart.CFrame = torso.BackToolPart.CFrame
+		wait(.5)
+	end
+end
+function WeaponsModule:placeToolOnBack()
+	if self.Tool.Parent.Name == "Backpack" then 
+		local backpack = self.Tool.Parent
+		local player = backpack.Parent
+		local character = player.Character
+		local torso = character.Torso
+		local backToolPart = torso.BackToolPart
+		local toolClone = self.Tool:Clone()
+		local toolBackModel = Instance.new("Model")
+		toolBackModel.Parent = backToolPart
+		toolBackModel.Name = self.Tool.Name .."ToolBackModel"-- classify by name so we only destroy backmodels of the same item type
+		--LOOP THROUGH WHATS IN TOOLCLONE AND PUTS IT INTO BACK MODEL
+		for i, child in ipairs(toolClone:GetChildren()) do
+			if child:IsA("Part")  or child:IsA("UnionOperation") or child:IsA("MeshPart") then
+				child.Parent = toolBackModel
+				child.CanCollide = false
+				child.Massless = true
+			end
+		end
+		-- set Primary Part OF Model To Tools Handle
+		toolBackModel.PrimaryPart = toolBackModel:FindFirstChild("Handle")
+		--Creates the Weld
+		local ToolBackWeld = Instance.new("Weld")
+		ToolBackWeld.Name = self.Tool.Name .."ToolBackWeld"-- classify by name so we only destroy backmodels of the same item type
+		ToolBackWeld.Parent = torso.BackToolPart
+		-- set part 0 and part 1
+		ToolBackWeld.Part0 = torso.BackToolPart
+		ToolBackWeld.Part1 = toolBackModel:FindFirstChild("Handle")
+		--Set CFRAME TO back tool part
+		toolBackModel.PrimaryPart.CFrame = torso.BackToolPart.CFrame
+		wait(.5)
+	end
+end
+function WeaponsModule:placeToolOnHip()
+	if self.Tool.Parent.Name == "Backpack" then 
+		local backpack = self.Tool.Parent
+		local player = backpack.Parent
+		local character = player.Character
+		local rightLeg = character["Right Leg"]
+		local hipToolPart = rightLeg.HipToolPart
+		local toolClone = self.Tool:Clone()
+		local toolHipModel = Instance.new("Model")
+		toolHipModel.Parent = hipToolPart
+		toolHipModel.Name = self.Tool.Name .."ToolHipModel"-- classify by name so we only destroy Hipmodels of the same item type
+		--LOOP THROUGH WHATS IN TOOLCLONE AND PUTS IT INTO Hip MODEL
+		for i, child in ipairs(toolClone:GetChildren()) do
+			if child:IsA("Part")  or child:IsA("UnionOperation") or child:IsA("MeshPart") then
+				child.Parent = toolHipModel
+				child.CanCollide = false
+				child.Massless = true
+			end
+		end
+		-- set Primary Part OF Model To Tools Handle
+		toolHipModel.PrimaryPart = toolHipModel:FindFirstChild("Handle")
+		--Creates the Weld
+		local ToolHipWeld = Instance.new("Weld")
+		ToolHipWeld.Name = self.Tool.Name .."ToolHipWeld"-- classify by name so we only destroy Hipmodels of the same item type
+		ToolHipWeld.Parent = rightLeg.HipToolPart
+		-- set part 0 and part 1
+		ToolHipWeld.Part0 = rightLeg.HipToolPart
+		ToolHipWeld.Part1 = toolHipModel:FindFirstChild("Handle")
+		--Set CFRAME TO Hip tool part
+		wait(.5)
+	end
+end
+function WeaponsModule:RemoveToolOnBack()
+		local character = self.Tool.Parent 
+		local torso = character.Torso
+		local BackToolPart = torso.BackToolPart
+
+		-- Loops through the children of the character's Torso and destroys the ToolBackModel and the Weld
+		for i, Child in pairs(BackToolPart:GetChildren()) do
+			if Child:IsA("Model") and Child.Name == self.Tool.name .."ToolBackModel" then
+				Child:Destroy()
+			end
+
+			if Child:IsA("Weld") and Child.Name == self.Tool.name .."ToolBackWeld" then
+				Child:Destroy()
+			end
+		end
+end
+function WeaponsModule:RemoveToolOnHip()
+	local character = self.Tool.Parent 
+	local rightLeg = character["Right Leg"]
+	local HipToolPart = rightLeg.HipToolPart
+
+	-- Loops through the children of the character's Torso and destroys the ToolBackModel and the Weld
+	for i, Child in pairs(HipToolPart:GetChildren()) do
+		if Child:IsA("Model") and Child.Name == self.Tool.name .."ToolHipModel" then
+			Child:Destroy()
+		end
+
+		if Child:IsA("Weld") and Child.Name == self.Tool.name .."ToolHipWeld" then
+			Child:Destroy()
+		end
+	end
+
+
+end
+function WeaponsModule:playIdleAnim()
+	local character = self.Tool.Parent
+	local animator = character:WaitForChild("Humanoid"):WaitForChild("Animator")
+	local idleAnim = self.Tool.IdleAnim_Folder.IdleAnim
+	self.idleAnimTrack= animator:LoadAnimation(idleAnim)
+	self.idleAnimTrack:Play()	
+end
+function WeaponsModule:stopIdleAnim()
+	if self.idleAnimTrack then
+		self.idleAnimTrack:Stop()
+	end
+end
+
+function WeaponsModule:Activated()
+	if self.ActivationDebounce == false then
+		if self.Tool.Parent:FindFirstChild("BlockingBoolean") then
+			local blockingBoolean = self.Tool.Parent:FindFirstChild("BlockingBoolean")
+			local player = playersService:GetPlayerFromCharacter(self.Tool.Parent)
+			local playerIsStunned = playerInfoModule.CheckIfPlayerIsStunned(player)
+			if blockingBoolean.Value == false and playerIsStunned ~= true then
+				if self.InShiftLock == false then
+					combatLockToggle:FireClient(player,true)
+					self.InShiftLock = true
+				end
+				self.ActivationDebounce = true
+				if #self.AnimationTable > 0 then
+					local randomAnimationNumber = math.random(1, #self.AnimationTable)
+					if self.Tool:GetAttribute("ToolActivateSoundId") ~= "" then -- play toolActivate sound if it has one
+						if not self.Tool.Handle:FindFirstChild("ToolActivateSound") then
+							local sound = Instance.new("Sound", self.Tool.Handle)
+							sound.Name = "ToolActivateSound"
+							sound.SoundId = self.Tool:GetAttribute("ToolActivateSoundId")
+							sound.Volume = self.Tool:GetAttribute("ToolActivateSoundVolume") 
+							sound.RollOffMaxDistance = 100
+						end
+						local toolActivateSound = self.Tool.Handle:FindFirstChild("ToolActivateSound")
+						toolActivateSound:Play()
+					end
+					local randomAnim = self.AnimationTable[randomAnimationNumber]
+					self.currentToolAnimationTrack = self.Tool.Parent:WaitForChild("Humanoid").Animator:LoadAnimation(randomAnim)
+					self.currentToolAnimationTrack:Play()
+				end
+				if 	self.Tool:GetAttribute("ToolDamage") > 0 then
+					self:ActivateCaster()
+				end
+				self.ActivationDebounce = false
+			end
+		end
+	end
+	
+end
+
+
+
+function WeaponsModule:Equip()
+	if playersService:GetPlayerFromCharacter(self.Tool.Parent) then
+
+			local character = self.Tool.Parent
+			self.lastPlayerHolding = playersService:GetPlayerFromCharacter(self.Tool.Parent)
+			local rayCastParams = RaycastParams.new()
+			rayCastParams.FilterType = Enum.RaycastFilterType.Exclude
+			rayCastParams.FilterDescendantsInstances = {character}
+			local hitbox = clientCast.new(self.Tool.Hitbox_Part,rayCastParams)
+			hitbox:SetOwner(playersService:GetPlayerFromCharacter(self.Tool.Parent) )
+			self.Caster = hitbox
+			hitbox.Collided:Connect(function(params)
+				if params.Instance.Parent:FindFirstChild("Humanoid") then
+					if not table.find(self.HitModels,params.Instance.Parent) then
+						table.insert(self.HitModels,params.Instance.Parent)
+						local model = params.Instance.Parent
+						self:OnHit(model)
+						--params.Instance.Parent.HumanoidRootPart:ApplyImpulse(params.Instance.Parent.HumanoidRootPart.Position.Unit * 100)
+					end
+				end	
+			end)
+				self:playIdleAnim()
+				if self.Tool:GetAttribute("ToolCarriedOnBack") == true then 
+					self:RemoveToolOnBack()
+				end
+				if self.Tool:GetAttribute("ToolCarriedOnHip") == true then
+					self:RemoveToolOnHip()
+				end
+				local playerCharacter = self.Tool.Parent
+				if playerCharacter:IsA("Model") then
+					if #playerCharacter.NonBodyPartItems:GetChildren() > 0 then
+						local player = playersService:GetPlayerFromCharacter(playerCharacter)
+						self.Tool.Parent = player.Backpack
+					end
+					for i, part in ipairs (self.Tool:GetChildren()) do
+						if part:IsA("Part") or part:IsA("UnionOperation") or part:IsA("MeshPart")then
+							part.CanCollide = false
+							part.CanTouch = true
+							local grip = playerCharacter["Right Arm"]:WaitForChild("RightGrip")
+							grip.C0 = CFrame.new(0,0,0)
+							grip.Part0 = playerCharacter["Right Arm"].HandCenter
+							grip.Part1 = self.Tool.Handle
+							grip.Name = "RightGrip"
+							grip.Parent = playerCharacter["Right Arm"]
+						end
+					end
+				end
+	end
+end	
+	
+
+
+function WeaponsModule:Unequip()
+		if self.Caster then
+			self.Caster:Stop()
+			self.Caster = nil
+		end
+		if self.InShiftLock == true then
+			combatLockToggle:FireClient(self.lastPlayerHolding,false)
+			self.InShiftLock = false
+		end
+		self:stopIdleAnim()
+		for i, part in ipairs (self.Tool:GetChildren()) do
+			if part:IsA("Part") or part:IsA("UnionOperation") or part:IsA("MeshPart") then
+				part.CanTouch = false
+				part.Massless = true
+			end
+		end
+		if self.Tool:GetAttribute("ToolCarriedOnBack") == true then 
+			self:placeToolOnBack()
+		end
+		if self.Tool:GetAttribute("ToolCarriedOnHip") == true then
+			self:placeToolOnHip()
+		end
+end
+function WeaponsModule:setToolPartsCanCollideToTrue()
+	for i, part in ipairs(self.Tool:GetChildren()) do
+		if part:IsA("Part") or part:IsA("UnionOperation") or part:IsA("MeshPart") then
+			part.CanCollide = true
+			part.Massless = false
+		end
+	end
+end
+function WeaponsModule:toolParentChanged()
+	if self.Tool.Parent == game.Workspace then
+		self.Tool.Parent = ToolsInWorkspaceFolder
+		self:setToolPartsCanCollideToTrue(self.Tool)
+	end
+	if self.Tool.Parent == ToolsInWorkspaceFolder then
+		self.PickUpPrompt.Enabled = true
+	else
+		self.PickUpPrompt.Enabled = false
+	end
+end
+
+
+return WeaponsModule
