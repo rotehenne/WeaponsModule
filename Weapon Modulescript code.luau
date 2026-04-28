@@ -23,8 +23,8 @@ local WeaponsModule = {}
 
 WeaponsModule.__index = WeaponsModule
 
-function WeaponsModule.new(WeaponTool)
-	local self = setmetatable({},WeaponsModule)
+function WeaponsModule.new(WeaponTool) -- creates a new object table and
+	local self = setmetatable({},WeaponsModule) -- sets the the metatable WeaponModule
 	self.Tool = WeaponTool
 	self.Handle = self.Tool.Handle
 	self.PickUpPrompt = self.Handle.PickUpTool
@@ -43,7 +43,7 @@ function WeaponsModule.new(WeaponTool)
 	return self
 end
 
-function WeaponsModule:SetUpTool()
+function WeaponsModule:SetUpTool() -- I call this to make sure the tool will work, it just sets up the appearance and animations
 	self.Handle.Transparency = 1
 	self.PickUpPrompt.RequiresLineOfSight = false
 	self.PickUpPrompt.ObjectText = self.Tool.Name
@@ -73,7 +73,7 @@ function WeaponsModule:SetUpTool()
 end
 
 
-function WeaponsModule:OnHit(hitmodel)
+function WeaponsModule:OnHit(hitmodel) -- I call this for the effect that the weapon has when it actually hits a character
 	local model = hitmodel
 	if model.Parent ~= nil then
 		if model:IsA("Model") and self.Tool:GetAttribute("DamageType") == "Creature"  then
@@ -133,7 +133,7 @@ function WeaponsModule:OnHit(hitmodel)
 	end
 end
 
-function WeaponsModule:ActivateCaster()
+function WeaponsModule:ActivateCaster() -- this activates the ClientCastModule to register hits effectively
 	local playerCharacter = self.Tool.Parent
 	local player = playersService:GetPlayerFromCharacter(playerCharacter)
 	if self.Caster then
@@ -146,7 +146,7 @@ function WeaponsModule:ActivateCaster()
 	end
 end
 
-function WeaponsModule:placeToolOnBack()
+function WeaponsModule:placeToolOnBack() -- Just for visuals sake
 	if self.Tool.Parent.Name == "Backpack" then 
 		local backpack = self.Tool.Parent
 		local player = backpack.Parent
@@ -245,7 +245,7 @@ function WeaponsModule:RemoveToolOnHip()
 
 
 end
-function WeaponsModule:playIdleAnim()
+function WeaponsModule:playIdleAnim() -- uses idle animation assigned to tool to play a simple idle anim based on the tool being used
 	local character = self.Tool.Parent
 	local animator = character:WaitForChild("Humanoid"):WaitForChild("Animator")
 	local idleAnim = self.Tool.IdleAnim_Folder.IdleAnim
@@ -258,9 +258,9 @@ function WeaponsModule:stopIdleAnim()
 	end
 end
 
-function WeaponsModule:Activated()
+function WeaponsModule:Activated() -- called if player activates the tool
 	if self.ActivationDebounce == false then
-		if self.Tool.Parent:FindFirstChild("BlockingBoolean") then
+		if self.Tool.Parent:FindFirstChild("BlockingBoolean") then -- checks if player blocking
 			local blockingBoolean = self.Tool.Parent:FindFirstChild("BlockingBoolean")
 			local player = playersService:GetPlayerFromCharacter(self.Tool.Parent)
 			local playerIsStunned = playerInfoModule.CheckIfPlayerIsStunned(player)
@@ -299,7 +299,7 @@ end
 
 
 
-function WeaponsModule:Equip()
+function WeaponsModule:Equip() -- Called when player equips tool
 	if playersService:GetPlayerFromCharacter(self.Tool.Parent) then
 
 			local character = self.Tool.Parent
@@ -309,7 +309,7 @@ function WeaponsModule:Equip()
 			rayCastParams.FilterDescendantsInstances = {character}
 			local hitbox = clientCast.new(self.Tool.Hitbox_Part,rayCastParams)
 			hitbox:SetOwner(playersService:GetPlayerFromCharacter(self.Tool.Parent) )
-			self.Caster = hitbox
+			self.Caster = hitbox -- sets the caster variable to the clientcast hitbox variable
 			hitbox.Collided:Connect(function(params)
 				if params.Instance.Parent:FindFirstChild("Humanoid") then
 					if not table.find(self.HitModels,params.Instance.Parent) then
@@ -353,7 +353,7 @@ end
 
 function WeaponsModule:Unequip()
 		if self.Caster then
-			self.Caster:Stop()
+			self.Caster:Stop() -- deletes caster now it's no longer in use
 			self.Caster = nil
 		end
 		if self.InShiftLock == true then
@@ -374,7 +374,7 @@ function WeaponsModule:Unequip()
 			self:placeToolOnHip()
 		end
 end
-function WeaponsModule:setToolPartsCanCollideToTrue()
+function WeaponsModule:setToolPartsCanCollideToTrue() -- for dropping tools in the workspace
 	for i, part in ipairs(self.Tool:GetChildren()) do
 		if part:IsA("Part") or part:IsA("UnionOperation") or part:IsA("MeshPart") then
 			part.CanCollide = true
@@ -382,7 +382,7 @@ function WeaponsModule:setToolPartsCanCollideToTrue()
 		end
 	end
 end
-function WeaponsModule:toolParentChanged()
+function WeaponsModule:toolParentChanged() -- just to decide what to do with the tool depending on what its parented too
 	if self.Tool.Parent == game.Workspace then
 		self.Tool.Parent = ToolsInWorkspaceFolder
 		self:setToolPartsCanCollideToTrue(self.Tool)
