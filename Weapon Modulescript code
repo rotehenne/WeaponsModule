@@ -5,7 +5,6 @@ local playersService = game:GetService("Players")
 local teamsService = game:GetService("Teams")
 -- | Variables | --
 local bindableEventsFolder = replicatedStorage.BindableEventFolder
-local bindableEventsFolder = replicatedStorage.BindableEventFolder
 local joinTeamBindEvent =  bindableEventsFolder.JoinTeamBindEvent
 local naturalResourcesFolder = game.Workspace.NaturalResources
 local placedBuildingFolder = game.Workspace.PlacedBuildingsFolder
@@ -147,71 +146,6 @@ function WeaponsModule:ActivateCaster()
 	end
 end
 
-
-
-function WeaponsModule:PlaceOnHip()
-	if self.Tool.Parent.Name == "Backpack" then 
-		local backpack = self.Tool.Parent
-		local player = backpack.Parent
-		local character = player.Character
-		local rightLeg = character["Right Leg"]
-		local hipToolPart = rightLeg.HipToolPart
-		local toolClone = self.Tool:Clone()
-		local toolHipModel = Instance.new("Model")
-		toolHipModel.Parent = hipToolPart
-		toolHipModel.Name = self.Tool.Name .."ToolHipModel"-- classify by name so we only destroy Hipmodels of the same item type
-		--LOOP THROUGH WHATS IN TOOLCLONE AND PUTS IT INTO Hip MODEL
-		for i, child in ipairs(toolClone:GetChildren()) do
-			if child:IsA("Part")  or child:IsA("UnionOperation") or child:IsA("MeshPart") then
-				child.Parent = toolHipModel
-				child.CanCollide = false
-				child.Massless = true
-			end
-		end
-		-- set Primary Part OF Model To Tools Handle
-		toolHipModel.PrimaryPart = toolHipModel:FindFirstChild("Handle")
-		--Creates the Weld
-		local ToolHipWeld = Instance.new("Weld")
-		ToolHipWeld.Name = self.Tool.Name .."ToolHipWeld"-- classify by name so we only destroy Hipmodels of the same item type
-		ToolHipWeld.Parent = rightLeg.HipToolPart
-		-- set part 0 and part 1
-		ToolHipWeld.Part0 = rightLeg.HipToolPart
-		ToolHipWeld.Part1 = toolHipModel:FindFirstChild("Handle")
-		--Set CFRAME TO Hip tool part
-		wait(.5)
-	end
-end
-function WeaponsModule:PlaceOnBack()
-	if self.Tool.Parent.Name == "Backpack" then 
-		local backpack = self.Tool.Parent
-		local player = backpack.Parent
-		local character = player.Character
-		local torso = character.Torso
-		local backToolPart = torso.BackToolPart
-		local toolClone = self.Tool:Clone()
-		local toolBackModel = Instance.new("Model")
-		toolBackModel.Parent = backToolPart
-		toolBackModel.Name = self.Tool.Name .."ToolBackModel"-- classify by name so we only destroy backmodels of the same item type
-		for i, child in ipairs(toolClone:GetChildren()) do
-			if child:IsA("Part")  or child:IsA("UnionOperation") or child:IsA("MeshPart") then
-				child.Parent = toolBackModel
-				child.CanCollide = false
-				child.Massless = true
-			end
-		end
-		toolBackModel.PrimaryPart = toolBackModel:FindFirstChild("Handle")
-		--Creates the Weld
-		local ToolBackWeld = Instance.new("Weld")
-		ToolBackWeld.Name = self.Tool.Name .."ToolBackWeld"-- classify by name so we only destroy backmodels of the same item type
-		ToolBackWeld.Parent = torso.BackToolPart
-		-- set part 0 and part 1
-		ToolBackWeld.Part0 = torso.BackToolPart
-		ToolBackWeld.Part1 = toolBackModel:FindFirstChild("Handle")
-		--Set CFRAME TO back tool part
-		toolBackModel.PrimaryPart.CFrame = torso.BackToolPart.CFrame
-		wait(.5)
-	end
-end
 function WeaponsModule:placeToolOnBack()
 	if self.Tool.Parent.Name == "Backpack" then 
 		local backpack = self.Tool.Parent
